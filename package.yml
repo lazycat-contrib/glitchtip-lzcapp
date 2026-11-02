@@ -1,0 +1,18 @@
+package: community.lazycat.app.glitchtip
+name: GlitchTip
+version: 0.0.0
+description: "Open-source error tracking: collect exceptions, group them into issues and get alerted."
+min_os_version: "1.5.0"
+homepage: https://github.com/burke-software/GlitchTip
+author: GlitchTip
+license: MIT
+permissions:
+  required:
+    - net.internet
+locales:
+  zh:
+    name: GlitchTip
+    description: "自建错误追踪：收集应用报错、按类型聚合成 issue、看堆栈和趋势，还能接告警。"
+  en:
+    name: GlitchTip
+    description: "Open-source error tracking: collect exceptions, group them into issues and get alerted."

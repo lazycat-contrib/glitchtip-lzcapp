@@ -1,0 +1,96 @@
+application:
+  subdomain: glitchtip
+  multi_instance: false
+  upstreams:
+    - location: /package-licenses/
+      backend: file:///lzcapp/pkg/content/licenses/
+    - location: /
+      backend: http://glitchtip:8000/
+
+services:
+  db:
+    image: docker.1ms.run/library/postgres:16-alpine
+    environment:
+      - POSTGRES_DB=glitchtip
+      - POSTGRES_USER=glitchtip
+      - |-
+        POSTGRES_PASSWORD={{ stable_secret "glitchtip_db_password" | replace "\r" "" | replace "\n" "" }}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U glitchtip -d glitchtip
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    binds:
+      - /lzcapp/var/pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: docker.1ms.run/library/redis:7-alpine
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    binds:
+      - /lzcapp/var/redisdata:/data
+
+  glitchtip:
+    # upstream: glitchtip/glitchtip:6.2.6
+    image: docker.1ms.run/glitchtip/glitchtip:6.2.6
+    depends_on:
+      - db
+      - redis
+    # The stock image has no documented admin bootstrap, so seed one first.
+    entrypoint:
+      - /bin/sh
+      - /lzcapp/pkg/content/create-admin.sh
+    environment:
+      - |-
+        SECRET_KEY={{ stable_secret "glitchtip_secret_key" | replace "\r" "" | replace "\n" "" }}
+      - |-
+        DATABASE_URL=postgres://glitchtip:{{ stable_secret "glitchtip_db_password" | replace "\r" "" | replace "\n" "" }}@db:5432/glitchtip
+      - REDIS_URL=redis://redis:6379/0
+      - |-
+        EMAIL_URL=consolemail://
+      - GLITCHTIP_DOMAIN=https://{{ .S.AppDomain }}
+      - |-
+        DEFAULT_FROM_EMAIL=glitchtip@{{ .S.AppDomain }}
+      - |-
+        GLITCHTIP_ADMIN_EMAIL={{ .U.admin_email }}
+      - |-
+        GLITCHTIP_ADMIN_PASSWORD={{ .U.admin_password }}
+      - PORT=8000
+      - TZ=Asia/Shanghai
+    binds:
+      - /lzcapp/pkg/content:/lzcapp/pkg/content:ro
+      - /lzcapp/var/uploads:/code/uploads
+
+usage: |
+  GlitchTip 是自建的错误追踪平台：收集应用报错、聚合成 issue、看堆栈和趋势。
+
+  使用方法：
+  1. 打开应用，用你在安装时填写的管理员邮箱和密码登录。
+  2. 新建组织（Organization）和项目（Project），拿到项目对应的 DSN。
+  3. 在应用里装对应的 SDK 并填入 DSN，之后报错就会自动上报到这里。
+
+  数据与安全：
+  - 数据库在 PostgreSQL（/lzcapp/var/pgdata），Redis 持久化在 /lzcapp/var/redisdata，
+    上传的附件在 /lzcapp/var/uploads。卸载应用会一并删除，请定期备份。
+  - 数据库密码与应用密钥由平台稳定密钥生成，每个部署不同，不写成固定值。
+  - 管理员邮箱和密码来自安装参数，每次启动会重新同步到账号，不存在内置弱口令。
+  - 应用经懒猫入口鉴权访问。
+
+  说明：
+  - 本应用包含三个容器（GlitchTip + PostgreSQL + Redis），启动顺序由依赖关系保证。
+  - 未配置真实邮件服务（EMAIL_URL 指向控制台），告警邮件发不出去；建议用 webhook 接收通知。
+  - 未做真机验证：登录、建组织项目、上报错误、查看堆栈以及重启后持久化均未在设备上实测。
